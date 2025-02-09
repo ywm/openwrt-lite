@@ -28,7 +28,7 @@ endgroup() {
 OPENWRT_REPO=pmkol/openwrt-lite
 
 # github proxy
-[ "$CN_PROXY" = "y" ] && github_proxy="ghproxy.cc/https://" || github_proxy=""
+[ "$CN_PROXY" = "y" ] && github_proxy="git.apad.pro/https://" || github_proxy=""
 
 # github mirror
 export github="$github_proxy"github.com
