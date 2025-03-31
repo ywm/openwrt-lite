@@ -9,7 +9,7 @@ jobs:
   build:
     if: github.repository_owner == 'pmkol'
     name: Build ${{ matrix.model }}-${{ matrix.tag.version }}
-    runs-on: ubuntu-24.04
+    runs-on: self-hosted
     defaults:
       run:
         shell: bash
