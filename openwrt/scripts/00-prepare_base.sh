@@ -146,8 +146,11 @@ mv ../master/base-23.05/iproute2 package/network/utils/iproute2
 rm -rf package/libs/libunwind
 mv ../master/base-23.05/libunwind package/libs/libunwind
 
+# openssl - bump version
+rm -f package/libs/openssl/Makefile
+curl -s https://$mirror/openwrt/patch/openssl/Makefile > package/libs/openssl/Makefile
+
 # openssl - quictls
-[ "$DEV_BUILD" = "y" ] && rm -rf package/libs/openssl && cp -a ../master/openwrt-23.05/package/libs/openssl package/libs/openssl
 pushd package/libs/openssl/patches
     curl -sO https://$mirror/openwrt/patch/openssl/quic/0001-QUIC-Add-support-for-BoringSSL-QUIC-APIs.patch
     curl -sO https://$mirror/openwrt/patch/openssl/quic/0002-QUIC-New-method-to-get-QUIC-secret-length.patch
