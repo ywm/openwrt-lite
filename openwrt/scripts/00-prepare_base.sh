@@ -230,6 +230,7 @@ if [ "$MINIMAL_BUILD" != "y" ]; then
     git clone https://$github/pmkol/packages_utils_dockerd feeds/packages/utils/dockerd -b $docker_branch --depth 1
     git clone https://$github/pmkol/packages_utils_containerd feeds/packages/utils/containerd -b $docker_branch --depth 1
     git clone https://$github/pmkol/packages_utils_runc feeds/packages/utils/runc -b $docker_branch --depth 1
+    sed -i '/cgroupfs-mount/d' feeds/packages/utils/dockerd/Config.in
     sed -i '/sysctl.d/d' feeds/packages/utils/dockerd/Makefile
 fi
 
