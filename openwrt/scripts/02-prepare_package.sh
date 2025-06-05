@@ -49,6 +49,9 @@ if curl -s "https://$mirror/openwrt/23-config-common-$cfg_ver" | grep -q "^CONFI
     mv dist files/etc/nikki/run/ui
 fi
 
+# natmap - disable syslogs
+sed -i 's/log_stdout:bool:1/log_stdout:bool:0/g;s/log_stderr:bool:1/log_stderr:bool:0/g' feeds/packages/net/natmap/files/natmap.init
+
 # net-snmp & collectd & rrdtool1 - bump version
 rm -rf feeds/packages/net/net-snmp
 mv ../master/extd-23.05/net-snmp feeds/packages/net/net-snmp
