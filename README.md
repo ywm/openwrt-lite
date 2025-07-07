@@ -324,3 +324,8 @@ export CN_PROXY=y
 #### 社区成员
 - [@Joseph Mory](https://github.com/morytyann)
 - [@Apois](https://github.com/apoiston)
+
+#### Tencent EdgeOne
+- [CDN acceleration and security protection for this project are sponsored by Tencent EdgeOne](https://edgeone.ai/?from=github)
+  
+[<img src="https://edgeone.ai/media/34fe3a45-492d-4ea4-ae5d-ea1087ca7b4b.png" alt="Tencent EdgeOne">](https://edgeone.ai/?from=github)
