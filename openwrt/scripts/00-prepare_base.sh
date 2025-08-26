@@ -236,6 +236,10 @@ mv ../master/base-23.05/curl feeds/packages/net/curl
 rm -rf package/libs/libpcap
 mv ../master/base-23.05/libpcap package/libs/libpcap
 
+# libxcrypt
+rm -rf feeds/packages/libs/libxcrypt
+mv ../master/openwrt/package/libs/xcrypt package/libs/xcrypt
+
 # docker
 [ "$DEV_BUILD" = "y" ] && docker_branch=main || docker_branch=openwrt-23.05
 rm -rf feeds/{luci/applications/luci-app-dockerman,packages/utils/docker-compose}
