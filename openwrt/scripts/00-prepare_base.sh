@@ -321,6 +321,10 @@ pushd feeds/luci
     curl -s https://$mirror/openwrt/patch/odhcpd/0001-luci-mod-network-add-option-for-ipv6-max-plt-vlt.patch | patch -p1
 popd
 
+# ucode - bump version
+rm -rf package/utils/ucode
+mv ../master/base-23.05/ucode package/utils/ucode
+
 # zlib - bump version
 rm -rf package/libs/zlib
 mv ../master/base-23.05/zlib package/libs/zlib
