@@ -11,8 +11,8 @@ rm -rf feeds/packages/lang/node/*
 curl -s https://$mirror/openwrt/patch/node/Makefile > feeds/packages/lang/node/Makefile
 
 # boost - bump version
-rm -rf feeds/packages/libs/boost
-cp -a ../master/packages/libs/boost feeds/packages/libs/boost
+rm -rf feeds/packages/libs/boost/*
+curl -s https://$mirror/openwrt/patch/packages-patches/boost/Makefile > feeds/packages/libs/boost/Makefile
 
 # default settings
 git clone https://$github/pmkol/default-settings package/new/default-settings -b lite --depth 1
