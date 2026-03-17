@@ -9,6 +9,8 @@ git clone https://$github/$pkg_golang --depth 1 feeds/packages/lang/golang
 # rust-bindgen - 0.72.1
 mkdir -p feeds/packages/devel/rust-bindgen
 curl -s https://$mirror/openwrt/patch/rust-bindgen/Makefile > feeds/packages/devel/rust-bindgen/Makefile
+./scripts/feeds update -i
+./scripts/feeds install rust-bindgen
 
 # node - prebuilt
 rm -rf feeds/packages/lang/node/*
