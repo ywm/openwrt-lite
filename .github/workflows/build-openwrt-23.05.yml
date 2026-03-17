@@ -151,14 +151,14 @@ jobs:
         tar zcf rom/buildinfo_${{ matrix.model }}.tar.gz info
 
     - name: Upload artifacts
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@main
       with:
         name: ${{ github.event.inputs.device }}-openwrt-23.05
         path: ${{ env.WORKDIR }}/rom/*
 
     - name: Create release
       continue-on-error: true
-      uses: ncipollo/release-action@v1.20.0
+      uses: ncipollo/release-action@main
       with:
         name: OpenWrt-23.05
         allowUpdates: true

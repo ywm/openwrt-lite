@@ -99,7 +99,7 @@ jobs:
         BUILD_TOOLCHAIN=y bash <(curl -sS https://raw.githubusercontent.com/${{ github.repository }}/main/openwrt/build.sh) server ${{ matrix.model }}
 
     - name: Create release
-      uses: ncipollo/release-action@v1.20.0
+      uses: ncipollo/release-action@main
       with:
         name: openwrt-23.05
         allowUpdates: true
