@@ -91,6 +91,10 @@ git clone https://$github/apadpro/telephony_libs_dahdi-linux feeds/telephony/lib
 # routing - batman-adv
 rm -rf feeds/routing/batman-adv
 cp -a ../master/routing/batman-adv feeds/routing/batman-adv
+mkdir -p feeds/routing/batman-adv/patches
+curl -s https://$mirror/openwrt/patch/packages-patches/batman-adv/0002-Revert-batman-adv-Switch-to-linux-array_size.h.patch > feeds/routing/batman-adv/patches/0002-Revert-batman-adv-Switch-to-linux-array_size.h.patch
+curl -s https://$mirror/openwrt/patch/packages-patches/batman-adv/0003-Revert-batman-adv-move-asm-unaligned.h-to-linux-unal.patch > feeds/routing/batman-adv/patches/0003-Revert-batman-adv-move-asm-unaligned.h-to-linux-unal.patch
+sed -i '/#include <linux\/types.h>/a \\n#if LINUX_VERSION_IS_LESS(6, 10, 0)\n#define __counted_by_be(member)\n#endif /* LINUX_VERSION_IS_LESS(6, 10, 0) */' feeds/routing/batman-adv/src/compat-hacks.h
 
 if [ "$KERNEL_CLANG_LTO" = "y" ]; then
     # netatop
