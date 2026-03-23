@@ -98,13 +98,7 @@ jobs:
         fi
 
     # -------------------------------------------------------------------------
-    # 4. Set time zone
-    # -------------------------------------------------------------------------
-    - name: Set time zone
-      run: sudo timedatectl set-timezone 'Asia/Shanghai'
-
-    # -------------------------------------------------------------------------
-    # 5. Ubuntu 24.04 compatibility — GCC 11 required for older OpenWrt builds
+    # 4. Ubuntu 24.04 compatibility — GCC 11 required for older OpenWrt builds
     # -------------------------------------------------------------------------
     - name: Ubuntu 24.04 compatibility (GCC 11)
       run: |
@@ -116,7 +110,7 @@ jobs:
         echo "Active GCC: $(gcc --version | head -1)"
 
     # -------------------------------------------------------------------------
-    # 6. Install build dependencies
+    # 5. Install build dependencies
     # -------------------------------------------------------------------------
     - name: Install build dependencies
       env:
@@ -136,7 +130,7 @@ jobs:
         git config --global user.email 'noreply@github.com'
 
     # -------------------------------------------------------------------------
-    # 7. Set build environment and define all paths in one place
+    # 6. Set build environment and define all paths in one place
     #
     #    Directory layout inside ${{ github.workspace }}:
     #
@@ -178,7 +172,7 @@ jobs:
         fi
 
     # -------------------------------------------------------------------------
-    # 8. Optionally wipe all persistent caches
+    # 7. Optionally wipe all persistent caches
     #    Use this when upgrading OpenWrt versions or recovering a corrupt cache.
     #    Recreates empty directories immediately so later steps find them.
     # -------------------------------------------------------------------------
@@ -198,7 +192,7 @@ jobs:
         echo "All caches wiped and recreated as empty directories."
 
     # -------------------------------------------------------------------------
-    # 9. Report cache state before build
+    # 8. Report cache state before build
     # -------------------------------------------------------------------------
     - name: Show cache state (pre-build)
       run: |
@@ -212,7 +206,7 @@ jobs:
         fi
 
     # -------------------------------------------------------------------------
-    # 10. Symlink persistent caches into the source tree
+    # 9. Symlink persistent caches into the source tree
     #
     #     We create openwrt/ in advance and place symlinks before build.sh runs.
     #     Standard OpenWrt build scripts skip `git clone` when the target
@@ -246,7 +240,7 @@ jobs:
         ls -la openwrt/dl openwrt/build_dir
 
     # -------------------------------------------------------------------------
-    # 11. Compile OpenWrt
+    # 10. Compile OpenWrt
     # -------------------------------------------------------------------------
     - name: Compile OpenWrt
       working-directory: ${{ env.WORKDIR }}
@@ -268,7 +262,7 @@ jobs:
           "$BUILD_VERSION" "$BUILD_DEVICE"
 
     # -------------------------------------------------------------------------
-    # 12. Verbose re-run on failure
+    # 11. Verbose re-run on failure
     # -------------------------------------------------------------------------
     - name: Verbose logs after failed compilation
       working-directory: ${{ env.WORKDIR }}
@@ -287,7 +281,7 @@ jobs:
         exit 1
 
     # -------------------------------------------------------------------------
-    # 13. Prepare firmware files
+    # 12. Prepare firmware files
     # -------------------------------------------------------------------------
     - name: Prepare firmware files
       working-directory: ${{ env.WORKDIR }}
@@ -331,7 +325,7 @@ jobs:
         cat info/sha256sums.txt
 
     # -------------------------------------------------------------------------
-    # 14. Report cache state after build
+    # 13. Report cache state after build
     # -------------------------------------------------------------------------
     - name: Show cache state (post-build)
       run: |
@@ -347,7 +341,7 @@ jobs:
         df -Th "${{ github.workspace }}"
 
     # -------------------------------------------------------------------------
-    # 15. Upload artifacts
+    # 14. Upload artifacts
     # -------------------------------------------------------------------------
     - name: Upload artifacts
       uses: actions/upload-artifact@v4
@@ -357,7 +351,7 @@ jobs:
         retention-days: 7
 
     # -------------------------------------------------------------------------
-    # 16. Create / update GitHub release
+    # 15. Create / update GitHub release
     # -------------------------------------------------------------------------
     - name: Create release
       continue-on-error: true
@@ -375,7 +369,7 @@ jobs:
         artifacts: ${{ env.WORKDIR }}/rom/*
 
     # -------------------------------------------------------------------------
-    # 17. Cleanup — always runs, even on failure
+    # 16. Cleanup — always runs, even on failure
     #
     #     Only removes the per-run output tree (openwrt_build/).
     #     Deliberately preserves:
