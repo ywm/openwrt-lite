@@ -41,6 +41,11 @@ on:
         options:
           - 'false'
           - 'true'
+      make_jobs:
+        description: 'Parallel jobs for make (0 = auto: use all logical cores)'
+        required: false
+        default: '0'
+        type: string
 
 # Prevent concurrent builds on the same runner — they share disk and cache dirs
 concurrency:
@@ -88,6 +93,12 @@ jobs:
             echo "::error::build_options must be KEY=VALUE pairs (e.g. FOO=bar BAZ=1). Got: $BUILD_OPTIONS"
             exit 1
           fi
+        fi
+
+        MAKE_JOBS="${{ inputs.make_jobs }}"
+        if ! echo "$MAKE_JOBS" | grep -qE '^[0-9]+$'; then
+          echo "::error::make_jobs must be a non-negative integer (0 = auto). Got: $MAKE_JOBS"
+          exit 1
         fi
 
         AVAIL_GB=$(df --output=avail -BG "${{ github.workspace }}" | tail -1 | tr -d 'G')
@@ -171,6 +182,26 @@ jobs:
           ccache --set-config=max_size=5G
         fi
 
+        # Resolve parallel job count
+        # 0 = auto: use all logical cores (nproc), matching default OpenWrt behaviour
+        # N > 0 = use exactly N jobs, leaving the rest of the system responsive
+        REQUESTED_JOBS="${{ inputs.make_jobs }}"
+        if [ "$REQUESTED_JOBS" = "0" ]; then
+          RESOLVED_JOBS="$(nproc)"
+          echo "make_jobs=0 (auto): resolved to ${RESOLVED_JOBS} logical cores"
+        else
+          RESOLVED_JOBS="$REQUESTED_JOBS"
+          TOTAL_CORES="$(nproc)"
+          echo "make_jobs=${RESOLVED_JOBS} of ${TOTAL_CORES} logical cores"
+          if [ "$RESOLVED_JOBS" -gt "$TOTAL_CORES" ]; then
+            echo "::warning::make_jobs (${RESOLVED_JOBS}) exceeds logical core count (${TOTAL_CORES}). This rarely helps and may slow the build."
+          fi
+        fi
+        # MAKEFLAGS is inherited by every sub-make invoked by OpenWrt's build system
+        echo "MAKEFLAGS=-j${RESOLVED_JOBS}" >> "$GITHUB_ENV"
+        echo "MAKE_JOBS=${RESOLVED_JOBS}"   >> "$GITHUB_ENV"
+        echo "Compilation will use -j${RESOLVED_JOBS}
+
     # -------------------------------------------------------------------------
     # 7. Optionally wipe all persistent caches
     #    Use this when upgrading OpenWrt versions or recovering a corrupt cache.
@@ -204,6 +235,9 @@ jobs:
           echo "=== ccache stats ==="
           ccache -s
         fi
+        echo "=== Parallel jobs ==="
+        echo "make_jobs input : ${{ inputs.make_jobs }} (0 = auto)"
+        echo "Resolved -j     : ${MAKE_JOBS} of $(nproc) logical cores"
 
     # -------------------------------------------------------------------------
     # 9. Symlink persistent caches into the source tree
@@ -252,6 +286,8 @@ jobs:
         BUILD_OPTIONS: ${{ inputs.build_options }}
       run: |
         export GITHUB_REPO="${{ github.repository }}"
+
+        echo "Compiling with MAKEFLAGS=${MAKEFLAGS}"
 
         if [ -n "$BUILD_OPTIONS" ]; then
           export $BUILD_OPTIONS
