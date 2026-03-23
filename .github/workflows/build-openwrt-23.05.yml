@@ -29,7 +29,8 @@ on:
 jobs:
   build:
     name: Build OpenWrt 23.05 ${{ github.event.inputs.device }} (${{ github.event.inputs.device }})
-    runs-on: ubuntu-24.04
+    # runs-on: ubuntu-24.04
+    runs-on: [self-hosted, Linux, X64] 
     defaults:
       run:
         shell: bash
