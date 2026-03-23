@@ -1,0 +1,404 @@
+name: Build OpenWrt 23.05 (Local Runner)
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Select the build version'
+        required: true
+        default: 'lite'
+        type: choice
+        options:
+          - 'lite'
+          - 'server'
+      device:
+        description: 'Select device to build'
+        required: true
+        default: 'x86_64'
+        type: choice
+        options:
+          - 'x86_64'
+          - 'nanopi-r4s'
+          - 'nanopi-r5s'
+      build_options:
+        description: 'Build options (KEY=VALUE pairs, space-separated)'
+        required: false
+        default: ''
+        type: string
+      ccache:
+        description: 'Enable ccache to speed up incremental builds'
+        required: false
+        default: 'true'
+        type: choice
+        options:
+          - 'true'
+          - 'false'
+      clear_cache:
+        description: 'Wipe all persistent caches (dl/, build_dir/, ccache) before building'
+        required: false
+        default: 'false'
+        type: choice
+        options:
+          - 'false'
+          - 'true'
+
+# Prevent concurrent builds on the same runner — they share disk and cache dirs
+concurrency:
+  group: local-runner-build
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build ${{ inputs.device }} (${{ inputs.version }}) on Local Runner
+    runs-on: [self-hosted, Linux, X64]
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+    # -------------------------------------------------------------------------
+    # 1. Checkout
+    # -------------------------------------------------------------------------
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    # -------------------------------------------------------------------------
+    # 2. System info
+    # -------------------------------------------------------------------------
+    - name: Show system info
+      run: |
+        echo "=== CPU ==="
+        lscpu | grep -E "Model name|Socket|Core|Thread" || true
+        echo "=== Memory ==="
+        free -h
+        echo "=== Disk ==="
+        df -Th "${{ github.workspace }}"
+        echo "=== OS ==="
+        uname -a
+        lsb_release -a 2>/dev/null || true
+
+    # -------------------------------------------------------------------------
+    # 3. Validate inputs — fail fast before any heavy work
+    # -------------------------------------------------------------------------
+    - name: Validate inputs
+      run: |
+        BUILD_OPTIONS="${{ inputs.build_options }}"
+        if [ -n "$BUILD_OPTIONS" ]; then
+          if ! echo "$BUILD_OPTIONS" | grep -qE '^[a-zA-Z0-9_]+=\S+( [a-zA-Z0-9_]+=\S+)*$'; then
+            echo "::error::build_options must be KEY=VALUE pairs (e.g. FOO=bar BAZ=1). Got: $BUILD_OPTIONS"
+            exit 1
+          fi
+        fi
+
+        AVAIL_GB=$(df --output=avail -BG "${{ github.workspace }}" | tail -1 | tr -d 'G')
+        echo "Available disk space: ${AVAIL_GB}G"
+        if [ "$AVAIL_GB" -lt 20 ]; then
+          echo "::error::Insufficient disk space. At least 20 GB required, only ${AVAIL_GB}G available."
+          exit 1
+        fi
+
+    # -------------------------------------------------------------------------
+    # 4. Set time zone
+    # -------------------------------------------------------------------------
+    - name: Set time zone
+      run: sudo timedatectl set-timezone 'Asia/Shanghai'
+
+    # -------------------------------------------------------------------------
+    # 5. Ubuntu 24.04 compatibility — GCC 11 required for older OpenWrt builds
+    # -------------------------------------------------------------------------
+    - name: Ubuntu 24.04 compatibility (GCC 11)
+      run: |
+        sudo apt-get update -qq
+        sudo apt-get install -y gcc-11 g++-11
+        sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-11 100 \
+          --slave /usr/bin/g++ g++ /usr/bin/g++-11
+        sudo update-alternatives --set gcc /usr/bin/gcc-11
+        echo "Active GCC: $(gcc --version | head -1)"
+
+    # -------------------------------------------------------------------------
+    # 6. Install build dependencies
+    # -------------------------------------------------------------------------
+    - name: Install build dependencies
+      env:
+        DEBIAN_FRONTEND: noninteractive
+      run: |
+        sudo apt-get update -qq
+        sudo apt-get install -y \
+          build-essential flex bison cmake g++ gawk gcc-multilib g++-multilib \
+          gettext git libfuse-dev libncurses5-dev libssl-dev python3 python3-pip \
+          python3-ply python3-pyelftools rsync unzip zlib1g-dev file wget \
+          subversion patch upx-ucl autoconf automake curl asciidoc binutils \
+          bzip2 lib32gcc-s1 libc6-dev-i386 uglifyjs msmtp texinfo libreadline-dev \
+          libglib2.0-dev xmlto libelf-dev libtool autopoint antlr3 gperf ccache \
+          swig coreutils haveged scons libpython3-dev rename qemu-utils jq
+        sudo apt-get clean
+        git config --global user.name  'GitHub Actions'
+        git config --global user.email 'noreply@github.com'
+
+    # -------------------------------------------------------------------------
+    # 7. Set build environment and define all paths in one place
+    #
+    #    Directory layout inside ${{ github.workspace }}:
+    #
+    #      .cache/openwrt/
+    #        dl/                  ← PERSISTENT: source tarballs (all devices share)
+    #        build_dir/<device>/  ← PERSISTENT: compiler objects (per-device)
+    #        ccache/              ← PERSISTENT: compiler cache
+    #
+    #      openwrt_build/         ← PER-RUN: cloned source tree, symlinks, output
+    #        openwrt/
+    #          dl       -> .cache/openwrt/dl           (symlink)
+    #          build_dir -> .cache/openwrt/build_dir/<device> (symlink)
+    #          bin/     <- firmware output (deleted on cleanup)
+    #          tmp/     <- temp files    (deleted on cleanup)
+    # -------------------------------------------------------------------------
+    - name: Set build environment
+      run: |
+        WORKSPACE="${{ github.workspace }}"
+
+        BUILD_PATH="$WORKSPACE/openwrt_build"
+        CACHE_ROOT="$WORKSPACE/.cache/openwrt"
+        DL_CACHE="$CACHE_ROOT/dl"
+        BUILD_DIR_CACHE="$CACHE_ROOT/build_dir/${{ inputs.device }}"
+        CCACHE_CACHE="$CACHE_ROOT/ccache"
+
+        mkdir -p "$BUILD_PATH" "$DL_CACHE" "$BUILD_DIR_CACHE" "$CCACHE_CACHE"
+
+        echo "WORKDIR=$BUILD_PATH"               >> "$GITHUB_ENV"
+        echo "CACHE_ROOT=$CACHE_ROOT"            >> "$GITHUB_ENV"
+        echo "DL_CACHE=$DL_CACHE"               >> "$GITHUB_ENV"
+        echo "BUILD_DIR_CACHE=$BUILD_DIR_CACHE" >> "$GITHUB_ENV"
+        echo "CCACHE_DIR=$CCACHE_CACHE"         >> "$GITHUB_ENV"
+
+        if [ "${{ inputs.ccache }}" = "true" ]; then
+          echo "CCACHE_MAXSIZE=5G" >> "$GITHUB_ENV"
+          echo "USE_CCACHE=1"      >> "$GITHUB_ENV"
+          ccache --set-config=cache_dir="$CCACHE_CACHE"
+          ccache --set-config=max_size=5G
+        fi
+
+    # -------------------------------------------------------------------------
+    # 8. Optionally wipe all persistent caches
+    #    Use this when upgrading OpenWrt versions or recovering a corrupt cache.
+    #    Recreates empty directories immediately so later steps find them.
+    # -------------------------------------------------------------------------
+    - name: Clear persistent caches (if requested)
+      if: inputs.clear_cache == 'true'
+      run: |
+        echo "::warning::clear_cache=true — wiping all persistent caches."
+        echo "Size before wipe:"
+        du -sh "${{ env.CACHE_ROOT }}" 2>/dev/null || echo "(empty)"
+
+        rm -rf "${{ env.CACHE_ROOT }}"
+        mkdir -p \
+          "${{ env.DL_CACHE }}" \
+          "${{ env.BUILD_DIR_CACHE }}" \
+          "${{ env.CCACHE_DIR }}"
+
+        echo "All caches wiped and recreated as empty directories."
+
+    # -------------------------------------------------------------------------
+    # 9. Report cache state before build
+    # -------------------------------------------------------------------------
+    - name: Show cache state (pre-build)
+      run: |
+        echo "=== Persistent cache sizes ==="
+        du -sh "${{ env.DL_CACHE }}"        2>/dev/null && echo "  ↑ dl/"        || echo "dl/: (empty)"
+        du -sh "${{ env.BUILD_DIR_CACHE }}"  2>/dev/null && echo "  ↑ build_dir/" || echo "build_dir/: (empty)"
+        du -sh "${{ env.CCACHE_DIR }}"      2>/dev/null && echo "  ↑ ccache/"    || echo "ccache/: (empty)"
+        if [ "${{ inputs.ccache }}" = "true" ]; then
+          echo "=== ccache stats ==="
+          ccache -s
+        fi
+
+    # -------------------------------------------------------------------------
+    # 10. Symlink persistent caches into the source tree
+    #
+    #     We create openwrt/ in advance and place symlinks before build.sh runs.
+    #     Standard OpenWrt build scripts skip `git clone` when the target
+    #     directory already exists, so this is safe.
+    #
+    #     Placing symlinks before build.sh ensures that:
+    #       - Any packages downloaded during the build land in dl/ (persistent)
+    #       - Any objects compiled land in build_dir/ (persistent)
+    #     rather than in ephemeral locations that get wiped on cleanup.
+    # -------------------------------------------------------------------------
+    - name: Symlink persistent caches into source tree
+      working-directory: ${{ env.WORKDIR }}
+      run: |
+        mkdir -p openwrt
+
+        if [ ! -e openwrt/dl ]; then
+          ln -sfn "${{ env.DL_CACHE }}" openwrt/dl
+          echo "Linked: openwrt/dl -> ${{ env.DL_CACHE }}"
+        else
+          echo "openwrt/dl already exists ($(ls -ld openwrt/dl)), skipping symlink."
+        fi
+
+        if [ ! -e openwrt/build_dir ]; then
+          ln -sfn "${{ env.BUILD_DIR_CACHE }}" openwrt/build_dir
+          echo "Linked: openwrt/build_dir -> ${{ env.BUILD_DIR_CACHE }}"
+        else
+          echo "openwrt/build_dir already exists ($(ls -ld openwrt/build_dir)), skipping symlink."
+        fi
+
+        echo "=== Active symlinks ==="
+        ls -la openwrt/dl openwrt/build_dir
+
+    # -------------------------------------------------------------------------
+    # 11. Compile OpenWrt
+    # -------------------------------------------------------------------------
+    - name: Compile OpenWrt
+      working-directory: ${{ env.WORKDIR }}
+      id: compile
+      continue-on-error: true
+      env:
+        BUILD_VERSION: ${{ inputs.version }}
+        BUILD_DEVICE:  ${{ inputs.device }}
+        BUILD_OPTIONS: ${{ inputs.build_options }}
+      run: |
+        export GITHUB_REPO="${{ github.repository }}"
+
+        if [ -n "$BUILD_OPTIONS" ]; then
+          export $BUILD_OPTIONS
+        fi
+
+        bash <(curl -sS \
+          "https://raw.githubusercontent.com/${{ github.repository }}/main/openwrt/build.sh") \
+          "$BUILD_VERSION" "$BUILD_DEVICE"
+
+    # -------------------------------------------------------------------------
+    # 12. Verbose re-run on failure
+    # -------------------------------------------------------------------------
+    - name: Verbose logs after failed compilation
+      working-directory: ${{ env.WORKDIR }}
+      if: steps.compile.outcome == 'failure'
+      run: |
+        if [ -d "openwrt" ]; then
+          cd openwrt && make V=s 2>&1 | tail -200
+        else
+          echo "::error::openwrt/ not found — build.sh may have failed before cloning."
+        fi
+
+    - name: Fail job if compilation failed
+      if: steps.compile.outcome == 'failure'
+      run: |
+        echo "::error::Compilation failed. See verbose logs above."
+        exit 1
+
+    # -------------------------------------------------------------------------
+    # 13. Prepare firmware files
+    # -------------------------------------------------------------------------
+    - name: Prepare firmware files
+      working-directory: ${{ env.WORKDIR }}
+      env:
+        BUILD_DEVICE: ${{ inputs.device }}
+      run: |
+        mkdir -p rom info
+
+        if [ "$BUILD_DEVICE" = "nanopi-r4s" ]; then
+          cp -a openwrt/bin/targets/rockchip/*/*.img.gz              rom/
+          cp -a openwrt/bin/targets/rockchip/*/*-r4s.manifest        info/manifest.txt
+          cp -a openwrt/bin/targets/rockchip/*/config.buildinfo      info/config.buildinfo
+
+        elif [ "$BUILD_DEVICE" = "nanopi-r5s" ]; then
+          cp -a openwrt/bin/targets/rockchip/*/*.img.gz              rom/
+          cp -a openwrt/bin/targets/rockchip/*/*.manifest            info/manifest.txt
+          cp -a openwrt/bin/targets/rockchip/*/config.buildinfo      info/config.buildinfo
+
+        elif [ "$BUILD_DEVICE" = "x86_64" ]; then
+          cp -a openwrt/bin/targets/x86/*/*-ext4-combined.img.gz         rom/
+          cp -a openwrt/bin/targets/x86/*/*-squashfs-combined.img.gz     rom/
+          cp -a openwrt/bin/targets/x86/*/*-ext4-combined-efi.img.gz     rom/
+          cp -a openwrt/bin/targets/x86/*/*-squashfs-combined-efi.img.gz rom/
+          cp -a openwrt/bin/targets/x86/*/*-generic-rootfs.tar.gz        rom/
+          cp -a openwrt/bin/targets/x86/*/*-x86-64-generic.manifest      info/manifest.txt
+          cp -a openwrt/bin/targets/x86/*/config.buildinfo               info/config.buildinfo
+
+        else
+          echo "::error::Unknown device: $BUILD_DEVICE"
+          exit 1
+        fi
+
+        # Checksums — unconditional, runs for all devices
+        ( cd rom && sha256sum *.gz > ../info/sha256sums.txt )
+
+        tar zcf rom/buildinfo_${BUILD_DEVICE}.tar.gz info
+
+        echo "=== Firmware files ==="
+        ls -lh rom/
+        echo "=== SHA256 sums ==="
+        cat info/sha256sums.txt
+
+    # -------------------------------------------------------------------------
+    # 14. Report cache state after build
+    # -------------------------------------------------------------------------
+    - name: Show cache state (post-build)
+      run: |
+        echo "=== Persistent cache sizes after build ==="
+        du -sh "${{ env.DL_CACHE }}"        2>/dev/null && echo "  ↑ dl/"        || echo "dl/: missing"
+        du -sh "${{ env.BUILD_DIR_CACHE }}"  2>/dev/null && echo "  ↑ build_dir/" || echo "build_dir/: missing"
+        du -sh "${{ env.CCACHE_DIR }}"      2>/dev/null && echo "  ↑ ccache/"    || echo "ccache/: missing"
+        if [ "${{ inputs.ccache }}" = "true" ]; then
+          echo "=== ccache stats ==="
+          ccache -s
+        fi
+        echo "=== Total workspace disk usage ==="
+        df -Th "${{ github.workspace }}"
+
+    # -------------------------------------------------------------------------
+    # 15. Upload artifacts
+    # -------------------------------------------------------------------------
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ inputs.device }}-openwrt-23.05-${{ inputs.version }}
+        path: ${{ env.WORKDIR }}/rom/*
+        retention-days: 7
+
+    # -------------------------------------------------------------------------
+    # 16. Create / update GitHub release
+    # -------------------------------------------------------------------------
+    - name: Create release
+      continue-on-error: true
+      uses: ncipollo/release-action@v1
+      with:
+        name: OpenWrt-23.05-Local
+        allowUpdates: true
+        replacesArtifacts: true
+        tag: openwrt-23.05
+        commit: main
+        body: |
+          OpenWrt 23.05 with Kernel 6.11 Enhanced
+          Built on Local Runner
+        token: ${{ secrets.GITHUB_TOKEN }}
+        artifacts: ${{ env.WORKDIR }}/rom/*
+
+    # -------------------------------------------------------------------------
+    # 17. Cleanup — always runs, even on failure
+    #
+    #     Only removes the per-run output tree (openwrt_build/).
+    #     Deliberately preserves:
+    #       .cache/openwrt/dl/         ← source tarballs
+    #       .cache/openwrt/build_dir/  ← intermediate compiler objects
+    #       .cache/openwrt/ccache/     ← compiler cache
+    #
+    #     Symlinks inside openwrt/ are unlinked BEFORE rm -rf to guarantee
+    #     rm never traverses into the persistent cache directories.
+    # -------------------------------------------------------------------------
+    - name: Cleanup build directory
+      if: always()
+      run: |
+        if [ -n "${{ env.WORKDIR }}" ] && [ -d "${{ env.WORKDIR }}" ]; then
+          echo "Removing per-run build directory: ${{ env.WORKDIR }}"
+
+          # Unlink symlinks first — prevents rm -rf from descending into caches
+          [ -L "${{ env.WORKDIR }}/openwrt/dl" ]        && unlink "${{ env.WORKDIR }}/openwrt/dl"
+          [ -L "${{ env.WORKDIR }}/openwrt/build_dir" ]  && unlink "${{ env.WORKDIR }}/openwrt/build_dir"
+
+          rm -rf "${{ env.WORKDIR }}"
+          echo "Done."
+        fi
+
+        echo "=== Disk after cleanup ==="
+        df -Th "${{ github.workspace }}"
