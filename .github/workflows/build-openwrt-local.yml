@@ -301,7 +301,7 @@ jobs:
         echo "Compiling with MAKEFLAGS=${MAKEFLAGS}"
 
         if [ -n "$BUILD_OPTIONS" ]; then
-          export $BUILD_OPTIONS
+          eval export "$BUILD_OPTIONS"
         fi
 
         bash <(curl -sS \
@@ -362,7 +362,7 @@ jobs:
         fi
 
         # Checksums — unconditional, runs for all devices
-        ( cd rom && sha256sum *.gz > ../info/sha256sums.txt )
+        ( cd rom && ls *.gz > /dev/null && sha256sum *.gz > ../info/sha256sums.txt )
 
         tar zcf rom/buildinfo_${BUILD_DEVICE}.tar.gz info
 
@@ -434,8 +434,8 @@ jobs:
           echo "Removing per-run build directory: ${{ env.WORKDIR }}"
 
           # Unlink symlinks first — prevents rm -rf from descending into caches
-          [ -L "${{ env.WORKDIR }}/openwrt/dl" ]        && unlink "${{ env.WORKDIR }}/openwrt/dl"
-          [ -L "${{ env.WORKDIR }}/openwrt/build_dir" ]  && unlink "${{ env.WORKDIR }}/openwrt/build_dir"
+          [ -L "${{ env.WORKDIR }}/openwrt/dl" ] && unlink "${{ env.WORKDIR }}/openwrt/dl" || true
+          [ -L "${{ env.WORKDIR }}/openwrt/build_dir" ] && unlink "${{ env.WORKDIR }}/openwrt/build_dir" || true
 
           rm -rf "${{ env.WORKDIR }}"
           echo "Done."
