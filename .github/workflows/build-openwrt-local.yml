@@ -316,7 +316,16 @@ jobs:
       if: steps.compile.outcome == 'failure'
       run: |
         if [ -d "openwrt" ]; then
-          cd openwrt && make V=s 2>&1 | tail -200
+          cd openwrt
+          echo "=== Checking for failed packages ==="
+          grep -r "failed to build" logs/ 2>/dev/null | tail -10 || true
+          echo "=== Attempting to identify failed package ==="
+          FAILED_PKG=$(find . -name ".built" -size 0 2>/dev/null | head -1 | xargs dirname 2>/dev/null | xargs basename 2>/dev/null || echo "")
+          if [ -n "$FAILED_PKG" ] && [ "$FAILED_PKG" != "" ]; then
+            echo "Found potentially failed package: $FAILED_PKG"
+          fi
+          echo "=== General verbose build log ==="
+          make V=s 2>&1 | tail -300
         else
           echo "::error::openwrt/ not found — build.sh may have failed before cloning."
         fi
