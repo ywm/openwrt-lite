@@ -211,7 +211,7 @@ jobs:
         # MAKEFLAGS is inherited by every sub-make invoked by OpenWrt's build system
         echo "MAKEFLAGS=-j${RESOLVED_JOBS}" >> "$GITHUB_ENV"
         echo "MAKE_JOBS=${RESOLVED_JOBS}"   >> "$GITHUB_ENV"
-        echo "Compilation will use -j${RESOLVED_JOBS}
+        echo "Compilation will use -j${RESOLVED_JOBS}"
 
     # -------------------------------------------------------------------------
     # 6. Optionally wipe all persistent caches
