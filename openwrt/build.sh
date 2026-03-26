@@ -419,9 +419,11 @@ fi
 # compile
 # FIX #1: All make calls now rely on MAKEFLAGS=-jN exported at the top,
 # so -j$cores is no longer passed explicitly (avoids double -j conflict).
+# VERBOSE_BUILD=1 adds V=s for detailed output (slower but easier to debug).
+[ "$VERBOSE_BUILD" = "1" ] && VERBOSE_FLAG="V=s" || VERBOSE_FLAG=""
 if [ "$BUILD_TOOLCHAIN" = "y" ]; then
     echo -e "\r\n${GREEN_COLOR}Building Toolchain ...${RES}\r\n"
-    make toolchain/compile || make toolchain/compile V=s || exit 1
+    make toolchain/compile $VERBOSE_FLAG || make toolchain/compile V=s || exit 1
     make tools/clang/clean
     rm -f dl/clang-*
     mkdir -p toolchain-cache
@@ -434,17 +436,17 @@ elif [ "$CLANG_LTO_THIN" = "y" ] && [ "$BUILD_TOOLCHAIN" != "y" ] && [ "$BUILD_F
     echo -e "\r\n${GREEN_COLOR}Building OpenWrt ...${RES}\r\n"
     sed -i "/BUILD_DATE/d" package/base-files/files/usr/lib/os-release
     sed -i "/BUILD_ID/aBUILD_DATE=\"$CURRENT_DATE\"" package/base-files/files/usr/lib/os-release
-    make toolchain/compile
-    make IGNORE_ERRORS="n m"
+    make toolchain/compile $VERBOSE_FLAG || make toolchain/compile V=s
+    make IGNORE_ERRORS="n m" $VERBOSE_FLAG || make IGNORE_ERRORS="n m" V=s
 else
     if [ "$BUILD_FAST" = "y" ]; then
         echo -e "\r\n${GREEN_COLOR}Building tools/clang ...${RES}\r\n"
-        make tools/clang/compile
+        make tools/clang/compile $VERBOSE_FLAG || make tools/clang/compile V=s
     fi
     echo -e "\r\n${GREEN_COLOR}Building OpenWrt ...${RES}\r\n"
     sed -i "/BUILD_DATE/d" package/base-files/files/usr/lib/os-release
     sed -i "/BUILD_ID/aBUILD_DATE=\"$CURRENT_DATE\"" package/base-files/files/usr/lib/os-release
-    make IGNORE_ERRORS="n m"
+    make IGNORE_ERRORS="n m" $VERBOSE_FLAG || make IGNORE_ERRORS="n m" V=s
 fi
 
 # compile time

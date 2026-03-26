@@ -46,6 +46,14 @@ on:
         required: false
         default: '0'
         type: string
+      verbose_build:
+        description: 'Enable verbose build output (-j1 V=s) for debugging. Slower but shows all commands.'
+        required: false
+        default: 'false'
+        type: choice
+        options:
+          - 'false'
+          - 'true'
 
 # Prevent concurrent builds on the same runner — they share disk and cache dirs
 concurrency:
@@ -212,6 +220,13 @@ jobs:
         echo "MAKEFLAGS=-j${RESOLVED_JOBS}" >> "$GITHUB_ENV"
         echo "MAKE_JOBS=${RESOLVED_JOBS}"   >> "$GITHUB_ENV"
         echo "Compilation will use -j${RESOLVED_JOBS}"
+
+        # Verbose build mode overrides MAKEFLAGS for debugging
+        if [ "${{ inputs.verbose_build }}" = "true" ]; then
+          echo "::warning::verbose_build=true — using -j1 V=s for detailed output. Build will be slower."
+          echo "MAKEFLAGS=-j1" >> "$GITHUB_ENV"
+          echo "VERBOSE_BUILD=1" >> "$GITHUB_ENV"
+        fi
 
     # -------------------------------------------------------------------------
     # 6. Optionally wipe all persistent caches
