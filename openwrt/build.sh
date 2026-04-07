@@ -43,20 +43,8 @@ if [ "$(id -u)" = "0" ]; then
     exit 1
 fi
 
-# FIX #1: Use MAKEFLAGS from environment if set (passed by workflow via -jN),
-# otherwise fall back to half of total CPU cores (minimum 1). This leaves
-# sufficient CPU headroom for system tasks and I/O operations.
-if [ -n "$MAKEFLAGS" ]; then
-    # Workflow already exported MAKEFLAGS=-jN; extract N for local use
-    cores=$(echo "$MAKEFLAGS" | grep -oE '[0-9]+' | head -1)
-    [ -z "$cores" ] && cores=$(nproc --all)
-else
-    cores=$(expr $(nproc --all) / 2)
-    # Ensure minimum of 1 thread if half of nproc results in 0
-    [ "$cores" -le 0 ] && cores=1
-    export MAKEFLAGS="-j${cores}"
-fi
-echo -e "${GREEN_COLOR}Parallel jobs: $cores (MAKEFLAGS=${MAKEFLAGS})${RES}"
+# cpus - use half of total threads + 1 for optimal build performance
+cores=`expr $(nproc --all) / 2 + 1`
 
 # $CURL_BAR
 if curl --help | grep progress-bar >/dev/null 2>&1; then
@@ -419,13 +407,9 @@ else
 fi
 
 # compile
-# FIX #1: All make calls now rely on MAKEFLAGS=-jN exported at the top,
-# so -j$cores is no longer passed explicitly (avoids double -j conflict).
-# V=sc enables script call tracing for detailed error output.
-[ "$VERBOSE_BUILD" = "1" ] && VERBOSE_FLAG="V=sc" || VERBOSE_FLAG=""
 if [ "$BUILD_TOOLCHAIN" = "y" ]; then
     echo -e "\r\n${GREEN_COLOR}Building Toolchain ...${RES}\r\n"
-    make toolchain/compile $VERBOSE_FLAG || make toolchain/compile V=sc || exit 1
+    make -j$cores toolchain/compile || make -j$cores toolchain/compile V=s || exit 1
     make tools/clang/clean
     rm -f dl/clang-*
     mkdir -p toolchain-cache
@@ -438,17 +422,17 @@ elif [ "$CLANG_LTO_THIN" = "y" ] && [ "$BUILD_TOOLCHAIN" != "y" ] && [ "$BUILD_F
     echo -e "\r\n${GREEN_COLOR}Building OpenWrt ...${RES}\r\n"
     sed -i "/BUILD_DATE/d" package/base-files/files/usr/lib/os-release
     sed -i "/BUILD_ID/aBUILD_DATE=\"$CURRENT_DATE\"" package/base-files/files/usr/lib/os-release
-    make toolchain/compile $VERBOSE_FLAG || make toolchain/compile V=sc
-    make IGNORE_ERRORS="n m" $VERBOSE_FLAG || make IGNORE_ERRORS="n m" V=sc
+    make toolchain/compile
+    make -j$cores IGNORE_ERRORS="n m"
 else
     if [ "$BUILD_FAST" = "y" ]; then
         echo -e "\r\n${GREEN_COLOR}Building tools/clang ...${RES}\r\n"
-        make tools/clang/compile $VERBOSE_FLAG || make tools/clang/compile V=sc
+        make tools/clang/compile -j$cores
     fi
     echo -e "\r\n${GREEN_COLOR}Building OpenWrt ...${RES}\r\n"
     sed -i "/BUILD_DATE/d" package/base-files/files/usr/lib/os-release
     sed -i "/BUILD_ID/aBUILD_DATE=\"$CURRENT_DATE\"" package/base-files/files/usr/lib/os-release
-    make IGNORE_ERRORS="n m" $VERBOSE_FLAG || make IGNORE_ERRORS="n m" V=sc
+    make -j$cores IGNORE_ERRORS="n m"
 fi
 
 # compile time
