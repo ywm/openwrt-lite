@@ -44,15 +44,15 @@ if [ "$(id -u)" = "0" ]; then
 fi
 
 # FIX #1: Use MAKEFLAGS from environment if set (passed by workflow via -jN),
-# otherwise fall back to nproc-2 (minimum 1). This leaves CPU headroom for
-# system tasks and prevents overloading on low-core systems.
+# otherwise fall back to half of total CPU cores (minimum 1). This leaves
+# sufficient CPU headroom for system tasks and I/O operations.
 if [ -n "$MAKEFLAGS" ]; then
     # Workflow already exported MAKEFLAGS=-jN; extract N for local use
     cores=$(echo "$MAKEFLAGS" | grep -oE '[0-9]+' | head -1)
     [ -z "$cores" ] && cores=$(nproc --all)
 else
-    cores=$(expr $(nproc --all) - 2)
-    # Ensure minimum of 1 thread if nproc-2 results in 0 or negative
+    cores=$(expr $(nproc --all) / 2)
+    # Ensure minimum of 1 thread if half of nproc results in 0
     [ "$cores" -le 0 ] && cores=1
     export MAKEFLAGS="-j${cores}"
 fi
